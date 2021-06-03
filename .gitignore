@@ -1,3 +1,9 @@
+# Project-Specific ignores
+client_secret.json
+cookie_info
+*.csv
+.vscode/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
