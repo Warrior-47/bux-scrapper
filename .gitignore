@@ -1,6 +1,6 @@
 # Project-Specific ignores
 client_secret.json
-cookie_info
+*.pickled
 *.csv
 .vscode/
 

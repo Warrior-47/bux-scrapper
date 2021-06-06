@@ -1,3 +1,4 @@
+from json import loads as jsonloads
 from bs4 import BeautifulSoup
 from os import path
 import requests
@@ -14,10 +15,11 @@ class Scrapper:
     
 
     def start_scrapping(self, course_id):
+        COOKIES_PATH = 'cookie_info.pickled'
 
         with requests.Session() as session:
-            if path.exists('cookie_info'):
-                with open('cookie_info', 'rb') as f:
+            if path.exists(COOKIES_PATH):
+                with open(COOKIES_PATH, 'rb') as f:
                     session.cookies.update(pickle.load(f))
                 
             response = session.get(self.url+self.request_url)
@@ -39,7 +41,7 @@ class Scrapper:
 
                 login_req = session.post(self.login_route,headers=HEADERS, data=login_payload)
                 
-                with open('cookie_info', 'wb') as f:
+                with open(COOKIES_PATH, 'wb') as f:
                     pickle.dump(session.cookies, f)
             
             response = session.get(self.url+self.request_url)
@@ -91,7 +93,7 @@ class Scrapper:
             for links in sub_section.findAll('li'):
                 completed_links.append((section_name,links.a['href']))
         
-        print('Content Links Found')
+        print('Content Links Found.')
 
         return completed_links
 
@@ -114,12 +116,9 @@ class Scrapper:
 
 
     def find_youtube_id(self, s):
-        s = s[1:-1]
-        splited_string = s.split(', ')
-        for val in splited_string:
-            if 'streams' in val:
-                id = val.split(':')[-1][0:-1]
-        return id
+        parsed_json = jsonloads(s)
+        id_ = parsed_json['streams'].split(':')[1]
+        return id_
 
 
 class CourseNotFoundException(Exception):
