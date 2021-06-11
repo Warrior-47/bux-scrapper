@@ -6,7 +6,9 @@ import os
 
 
 def authenticator():
+    credentials = None
     CREDENTIALS_PATH = 'youtube-credentials.pickled'
+
     if os.path.exists(CREDENTIALS_PATH):
         with open(CREDENTIALS_PATH, 'rb') as f:
             credentials = pickle.load(f)
@@ -16,7 +18,7 @@ def authenticator():
             credentials.refresh(Request())
         else:
             flow = InstalledAppFlow.from_client_secrets_file(
-                'client_secret.json')
+                'client_secret.json', scopes=["https://www.googleapis.com/auth/youtube.force-ssl"])
 
             flow.run_local_server(port=8181, prompt='consent')
 
@@ -32,7 +34,7 @@ def create_playlist(service, title):
     part = "snippet,status"
     body = {
         "snippet": {
-            "title": "Did it Work?",
+            "title": title,
             "description": "No Description",
             "tags": [
                 str(title)+" playlist",

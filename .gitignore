@@ -3,7 +3,7 @@ client_secret.json
 *.pickled
 *.csv
 .vscode/
-
+Output/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
