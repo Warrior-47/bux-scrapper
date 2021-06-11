@@ -1,23 +1,34 @@
-from json import loads as jsonloads
 from bs4 import BeautifulSoup
-from os import path
+from PyQt5 import QtCore
 import requests
 import html
 
-class Scrapper:
+from json import loads as jsonloads
+from os import path
 
-    def __init__(self, event=None):
+class Scrapper(QtCore.QThread):
+    int_val_signal = QtCore.pyqtSignal(int)
+    int_valmax_signal = QtCore.pyqtSignal(int)
+    str_signal = QtCore.pyqtSignal(str)
+
+    def __init__(self, email, pass_, course_id):
+        super().__init__()
+
         self.url = 'https://bux.bracu.ac.bd'
         self.login_route = 'https://bux.bracu.ac.bd/user_api/v1/account/login_session/'
         self.request_url = '/dashboard'
         self.youtube_urls = []
+
         self.total_links = 0
         self.downloaded = 0
-        self.event_manager = event
-    
 
-    def start_scrapping(self, email, pass_, course_id):
+        self.__email = email
+        self.__pass_ = pass_
+        self.__course_id = course_id
 
+
+    def run(self):
+        self.str_signal.emit('Logging In')
         with requests.Session() as session:
             csrf_token = session.get(self.url).cookies['csrftoken']
 
@@ -29,24 +40,25 @@ class Scrapper:
                 'X-CSRFToken': csrf_token
             }
             
-            login_payload = {'email': email, 'password': pass_}
+            login_payload = {'email': self.__email, 'password': self.__pass_}
 
             login_req = session.post(self.login_route,headers=HEADERS, data=login_payload)
 
             if not login_req.ok:
                 raise InvalidEmailPasswordException("Email or Password is Incorrect")
             
+            self.str_signal.emit('Successfully Logged In')
+
             response = session.get(self.url+self.request_url)
 
-            course = session.get(self._find_course_link(response, course_id))
+            course = session.get(self._find_course_link(response))
 
             content_urls = self._find_course_content_url(course)
 
             self.total_links = len(content_urls)
-
-            if self.event_manager:
-                self.event_manager.set_maximum_progress_event(self.total_links)
-                self.event_manager.notify_message_event('Downloading')
+            
+            self.int_valmax_signal.emit(self.total_links)
+            self.str_signal.emit('Downloading')
 
             for section_name, url in content_urls:
                 content_response = session.get(url)
@@ -54,17 +66,13 @@ class Scrapper:
                 youtube_url_list = self._find_youtube_link(content_response.text)
 
                 if youtube_url_list != []:
-                    self.youtube_urls.append((section_name,youtube_url_list))
+                    self.youtube_urls.append((section_name, youtube_url_list))
                 
                 self.downloaded += 1
                 print(f'{self.downloaded}/{self.total_links} Done.')
-                if self.event_manager:
-                    self.event_manager.notify_progress_event(self.downloaded)
+                self.int_val_signal.emit(self.downloaded)
             
-            if self.event_manager:
-                self.event_manager.notify_message_event("Saving")
-            
-            with open(f'Output/{course_id}-youtube-videos.csv', 'w') as f:
+            with open(f'Output/{self.__course_id}-youtube-videos.csv', 'w') as f:
                 f.write('Section Name;Youtube Links\n')
 
                 for section_name, url_list in self.youtube_urls:
@@ -72,19 +80,18 @@ class Scrapper:
 
                     for url in url_list:
                         f.write(';'+url+'\n')
+                        
+            self.str_signal.emit("Done!")
     
 
-    def _find_course_link(self, response, course_id):
+    def _find_course_link(self, response):
         soup = BeautifulSoup(response.text, 'lxml')
         courses = soup.find('ul', class_='listing-courses')
 
         for course in courses.findAll('div', 'wrapper-course-details'):
-            if course.find('div', class_='course-info').find('span', class_='info-course-id').text == course_id:
+            if course.find('div', class_='course-info').find('span', class_='info-course-id').text == self.__course_id:
                 print('Course Found.')
-
-                if self.event_manager:
-                    self.event_manager.notify_message_event('Course Found')
-                
+                self.str_signal.emit('Course Found')
                 return self.url+course.h3.a['href']
         
         raise CourseNotFoundException("Incorrect course name or You are not enrolled in the course.")
@@ -141,10 +148,9 @@ class InvalidEmailPasswordException(Exception):
 
 
 if __name__ == '__main__':
-    scrapper = Scrapper()
-
     email = input("Enter buX Email: ")
     pass_ = input("Enter buX Password: ")
     id_ = input("Enter Course ID of the Course You want to Scrap: ")
 
-    scrapper.start_scrapping(email, pass_, id_)
+    scrapper = Scrapper(email, pass_, id_)
+    scrapper.run()
