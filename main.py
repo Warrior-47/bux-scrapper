@@ -13,28 +13,42 @@ class ProgressWindow(QtWidgets.QMainWindow):
         QtWidgets.QMainWindow.__init__(self)
         self.ui = Ui_ProgressUI()
         self.ui.setupUi(self)
+        self.ui.scrap_button.clicked.connect(self.go_back)
         self.show()
 
         self.scrapper = Scrapper(email, pass_, course_id)
         self.scrapper.start()
 
         self.scrapper.str_signal.connect(self.change_info)
-        self.scrapper.int_val_signal.connect(self.update_progress_bar)
-        self.scrapper.int_valmax_signal.connect(self.update_max_progress)
+        self.scrapper.int_progress_signal.connect(self.update_progress_bar)
+        self.scrapper.int_progress_max_signal.connect(self.update_max_progress)
+        self.scrapper.down_done_signal.connect(self.show_button)
 
     
     def start_work(self, email, pass_, course_id):
         scrapper = Scrapper(self.event_manager)
         scrapper.start_scrapping(email, pass_, course_id)
     
+
     def change_info(self, message):
         self.ui.info_label.setText(message)
     
+
     def update_progress_bar(self, val):
         self.ui.progressBar.setProperty('value', val)
     
+
     def update_max_progress(self, val):
         self.ui.progressBar.setProperty('maximum', val)
+
+    
+    def show_button(self):
+        self.ui.scrap_button.show()
+
+    
+    def go_back(self):
+        self.sign_in = SignInWindow()
+        self.close()
 
 
 class SignInWindow(QtWidgets.QMainWindow):

@@ -5,11 +5,25 @@ import html
 
 from json import loads as jsonloads
 from os import path
+import traceback
+import sys
+
+
+class CourseNotFoundException(Exception):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+
+class InvalidEmailPasswordException(Exception):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
 
 class Scrapper(QtCore.QThread):
-    int_val_signal = QtCore.pyqtSignal(int)
-    int_valmax_signal = QtCore.pyqtSignal(int)
+    int_progress_signal = QtCore.pyqtSignal(int)
+    int_progress_max_signal = QtCore.pyqtSignal(int)
     str_signal = QtCore.pyqtSignal(str)
+    down_done_signal = QtCore.pyqtSignal()
 
     def __init__(self, email, pass_, course_id):
         super().__init__()
@@ -29,6 +43,7 @@ class Scrapper(QtCore.QThread):
 
     def run(self):
         self.str_signal.emit('Logging In')
+        print('Loggin In.')
         with requests.Session() as session:
             csrf_token = session.get(self.url).cookies['csrftoken']
 
@@ -45,9 +60,20 @@ class Scrapper(QtCore.QThread):
             login_req = session.post(self.login_route,headers=HEADERS, data=login_payload)
 
             if not login_req.ok:
-                raise InvalidEmailPasswordException("Email or Password is Incorrect")
+                try:
+                    raise InvalidEmailPasswordException("Email or Password is Incorrect")
+                except:
+                    traceback.print_exc()
+                    if __name__ == '__main__':
+                        sys.exit()
+                    else:
+                        self.str_signal.emit('Email or Password is Incorrect')
+                        self.down_done_signal.emit()
+                        self.terminate()
+                        self.wait()
             
             self.str_signal.emit('Successfully Logged In')
+            print('Successfully Logged In.')
 
             response = session.get(self.url+self.request_url)
 
@@ -57,8 +83,9 @@ class Scrapper(QtCore.QThread):
 
             self.total_links = len(content_urls)
             
-            self.int_valmax_signal.emit(self.total_links)
+            self.int_progress_max_signal.emit(self.total_links)
             self.str_signal.emit('Downloading')
+            print('Downloading.')
 
             for section_name, url in content_urls:
                 content_response = session.get(url)
@@ -70,7 +97,7 @@ class Scrapper(QtCore.QThread):
                 
                 self.downloaded += 1
                 print(f'{self.downloaded}/{self.total_links} Done.')
-                self.int_val_signal.emit(self.downloaded)
+                self.int_progress_signal.emit(self.downloaded)
             
             with open(f'Output/{self.__course_id}-youtube-videos.csv', 'w') as f:
                 f.write('Section Name;Youtube Links\n')
@@ -82,6 +109,8 @@ class Scrapper(QtCore.QThread):
                         f.write(';'+url+'\n')
                         
             self.str_signal.emit("Done!")
+            self.down_done_signal.emit()
+            print('Done!')
     
 
     def _find_course_link(self, response):
@@ -93,8 +122,18 @@ class Scrapper(QtCore.QThread):
                 print('Course Found.')
                 self.str_signal.emit('Course Found')
                 return self.url+course.h3.a['href']
-        
-        raise CourseNotFoundException("Incorrect course name or You are not enrolled in the course.")
+         
+        try:
+            raise CourseNotFoundException("Incorrect course name or You are not enrolled in the course.")
+        except:
+            traceback.print_exc()
+            if __name__ == '__main__':
+                sys.exit()
+            else:
+                self.str_signal.emit('Incorrect course name or You are not enrolled in the course.')
+                self.down_done_signal.emit()
+                self.terminate()
+                self.wait()
 
 
     def _find_course_content_url(self, response):
@@ -136,15 +175,6 @@ class Scrapper(QtCore.QThread):
         parsed_json = jsonloads(s)
         id_ = parsed_json['streams'].split(':')[1]
         return id_
-
-
-class CourseNotFoundException(Exception):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-class InvalidEmailPasswordException(Exception):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
 
 
 if __name__ == '__main__':

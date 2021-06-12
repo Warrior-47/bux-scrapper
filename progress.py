@@ -5,6 +5,8 @@ class Ui_ProgressUI(object):
         ProgressUI.setObjectName("ProgressUI")
         ProgressUI.setEnabled(True)
         ProgressUI.resize(480, 640)
+        ProgressUI.setMaximumSize(480, 640)
+        ProgressUI.setMinimumSize(480, 640)
         ProgressUI.setStyleSheet("background-color:rgb(32,32,32);")
         self.centralwidget = QtWidgets.QWidget(ProgressUI)
         self.centralwidget.setObjectName("centralwidget")
