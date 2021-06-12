@@ -1,6 +1,6 @@
-from bux_scrapper import Scrapper, CourseNotFoundException, InvalidEmailPasswordException
+from bux_scrapper import Scrapper
 
-from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5 import QtWidgets
 
 from progress import Ui_ProgressUI
 from sign_in import Ui_SignInUI
