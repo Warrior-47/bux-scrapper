@@ -3,6 +3,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_ProgressUI(object):
     def setupUi(self, ProgressUI):
         ProgressUI.setObjectName("ProgressUI")
+        ProgressUI.setWindowIcon(QtGui.QIcon('icon/scraper.png'))
         ProgressUI.setEnabled(True)
         ProgressUI.resize(480, 640)
         ProgressUI.setMaximumSize(480, 640)

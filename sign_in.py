@@ -3,6 +3,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_SignInUI(object):
     def setupUi(self, SignInUI):
         SignInUI.setObjectName("SignInUI")
+        SignInUI.setWindowIcon(QtGui.QIcon('icon/scraper.png'))
         SignInUI.setWindowModality(QtCore.Qt.NonModal)
         SignInUI.setEnabled(True)
         SignInUI.resize(480, 640)
