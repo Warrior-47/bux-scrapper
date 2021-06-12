@@ -6,7 +6,6 @@ import html
 from json import loads as jsonloads
 from os import path
 import traceback
-import sys
 
 
 class CourseNotFoundException(Exception):
@@ -28,6 +27,7 @@ class Scrapper(QtCore.QThread):
     def __init__(self, email, pass_, course_id):
         super().__init__()
 
+        self.terminate = False
         self.url = 'https://bux.bracu.ac.bd'
         self.login_route = 'https://bux.bracu.ac.bd/user_api/v1/account/login_session/'
         self.request_url = '/dashboard'
@@ -64,20 +64,24 @@ class Scrapper(QtCore.QThread):
                     raise InvalidEmailPasswordException("Email or Password is Incorrect")
                 except:
                     traceback.print_exc()
-                    if __name__ == '__main__':
-                        sys.exit()
-                    else:
-                        self.str_signal.emit('Email or Password is Incorrect')
-                        self.down_done_signal.emit()
-                        self.terminate()
-                        self.wait()
+                    self.str_signal.emit('Email or Password is Incorrect')
+                    self.down_done_signal.emit()
+                    self.terminate = True
+            
+            if self.terminate:
+                return
             
             self.str_signal.emit('Successfully Logged In')
             print('Successfully Logged In.')
 
             response = session.get(self.url+self.request_url)
 
-            course = session.get(self._find_course_link(response))
+            course_link = self._find_course_link(response)
+            
+            if self.terminate:
+                return
+                
+            course = session.get(course_link)
 
             content_urls = self._find_course_content_url(course)
 
@@ -127,13 +131,9 @@ class Scrapper(QtCore.QThread):
             raise CourseNotFoundException("Incorrect course name or You are not enrolled in the course.")
         except:
             traceback.print_exc()
-            if __name__ == '__main__':
-                sys.exit()
-            else:
-                self.str_signal.emit('Incorrect course name or You are not enrolled in the course.')
-                self.down_done_signal.emit()
-                self.terminate()
-                self.wait()
+            self.str_signal.emit('Incorrect course name or You are not enrolled in the course.')
+            self.down_done_signal.emit()
+            self.terminate = True
 
 
     def _find_course_content_url(self, response):
