@@ -5,7 +5,7 @@ from PyQt5 import QtWidgets
 from progress import Ui_ProgressUI
 from sign_in import Ui_SignInUI
 
-from os import environ
+from os import environ, path, mkdir
 import sys
 
 
@@ -79,6 +79,8 @@ def suppress_qt_warnings():
 
 if __name__ == '__main__':
     suppress_qt_warnings()
+    if not path.exists('Output'):
+        mkdir('Output')
     app = QtWidgets.QApplication(sys.argv)
     window = SignInWindow()
     sys.exit(app.exec_())

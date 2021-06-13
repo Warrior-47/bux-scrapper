@@ -1,11 +1,10 @@
 from bs4 import BeautifulSoup
 from PyQt5 import QtCore
 import requests
+import logging
 import html
 
 from json import loads as jsonloads
-from os import path
-import traceback
 
 
 class CourseNotFoundException(Exception):
@@ -27,7 +26,6 @@ class Scrapper(QtCore.QThread):
     def __init__(self, email, pass_, course_id):
         super().__init__()
 
-        self.terminate = False
         self.url = 'https://bux.bracu.ac.bd'
         self.login_route = 'https://bux.bracu.ac.bd/user_api/v1/account/login_session/'
         self.request_url = '/dashboard'
@@ -40,82 +38,110 @@ class Scrapper(QtCore.QThread):
         self.__pass_ = pass_
         self.__course_id = course_id
 
-
     def run(self):
+        logger = logger_setup()
+
         self.str_signal.emit('Logging In')
         print('Loggin In.')
+
         with requests.Session() as session:
-            csrf_token = session.get(self.url).cookies['csrftoken']
+            try:
+                csrf_token = session.get(self.url).cookies['csrftoken']
 
-            HEADERS = {
-                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36',
-                'Host': 'bux.bracu.ac.bd',
-                'Origin': self.url,
-                'Referer': 'https://bux.bracu.ac.bd/login?next=%2F',
-                'X-CSRFToken': csrf_token
-            }
-            
-            login_payload = {'email': self.__email, 'password': self.__pass_}
+                HEADERS = {
+                    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36',
+                    'Host': 'bux.bracu.ac.bd',
+                    'Origin': self.url,
+                    'Referer': 'https://bux.bracu.ac.bd/login?next=%2F',
+                    'X-CSRFToken': csrf_token
+                }
 
-            login_req = session.post(self.login_route,headers=HEADERS, data=login_payload)
+                login_payload = {'email': self.__email,
+                                 'password': self.__pass_}
 
-            if not login_req.ok:
-                try:
-                    raise InvalidEmailPasswordException("Email or Password is Incorrect")
-                except:
-                    traceback.print_exc()
-                    self.str_signal.emit('Email or Password is Incorrect')
-                    self.down_done_signal.emit()
-                    self.terminate = True
-            
-            if self.terminate:
-                return
-            
-            self.str_signal.emit('Successfully Logged In')
-            print('Successfully Logged In.')
+                login_req = session.post(
+                    self.login_route, headers=HEADERS, data=login_payload)
 
-            response = session.get(self.url+self.request_url)
+                if not login_req.ok:
+                    raise InvalidEmailPasswordException(
+                        "Email or Password is Incorrect")
 
-            course_link = self._find_course_link(response)
-            
-            if self.terminate:
-                return
-                
-            course = session.get(course_link)
+                self.str_signal.emit('Successfully Logged In')
+                print('Successfully Logged In.')
 
-            content_urls = self._find_course_content_url(course)
+                response = session.get(self.url+self.request_url)
 
-            self.total_links = len(content_urls)
-            
-            self.int_progress_max_signal.emit(self.total_links)
-            self.str_signal.emit('Downloading')
-            print('Downloading.')
+                course_link = self._find_course_link(response)
 
-            for section_name, url in content_urls:
-                content_response = session.get(url)
+                course = session.get(course_link)
 
-                youtube_url_list = self._find_youtube_link(content_response.text)
+                content_urls = self._find_course_content_url(course)
 
-                if youtube_url_list != []:
-                    self.youtube_urls.append((section_name, youtube_url_list))
-                
-                self.downloaded += 1
-                print(f'{self.downloaded}/{self.total_links} Done.')
-                self.int_progress_signal.emit(self.downloaded)
-            
-            with open(f'Output/{self.__course_id}-youtube-videos.csv', 'w') as f:
-                f.write('Section Name;Youtube Links\n')
+                self.total_links = len(content_urls)
 
-                for section_name, url_list in self.youtube_urls:
-                    f.write(section_name)
+                self.int_progress_max_signal.emit(self.total_links)
+                self.str_signal.emit('Downloading')
+                print('Downloading.')
 
-                    for url in url_list:
-                        f.write(';'+url+'\n')
-                        
-            self.str_signal.emit("Done!")
-            self.down_done_signal.emit()
-            print('Done!')
-    
+                for section_name, url in content_urls:
+                    content_response = session.get(url)
+
+                    youtube_url_list = self._find_youtube_link(
+                        content_response.text)
+
+                    if youtube_url_list != []:
+                        self.youtube_urls.append(
+                            (section_name, youtube_url_list))
+
+                    self.downloaded += 1
+                    print(f'{self.downloaded}/{self.total_links} Done.')
+                    self.int_progress_signal.emit(self.downloaded)
+
+                with open(f'Output/{self.__course_id}-youtube-videos.csv', 'w') as f:
+                    f.write('Section Name;Youtube Links\n')
+
+                    for section_name, url_list in self.youtube_urls:
+                        f.write(section_name)
+
+                        for url in url_list:
+                            f.write(';'+url+'\n')
+
+                self.str_signal.emit("Done!")
+                self.down_done_signal.emit()
+                print('Done!')
+
+            except requests.ConnectionError as ex:
+                self.str_signal.emit(
+                    'Check Your Internet Connection and Try Again')
+                self.down_done_signal.emit()
+                template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+                message = template.format(type(ex).__name__, ex.args)
+                print(message)
+
+            except InvalidEmailPasswordException as ex:
+                self.str_signal.emit('Email or Password is Incorrect')
+                self.down_done_signal.emit()
+                template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+                message = template.format(type(ex).__name__, ex.args)
+                print(message)
+
+            except CourseNotFoundException as ex:
+                self.str_signal.emit(
+                    'Incorrect course name or You are not enrolled in the course.')
+                self.down_done_signal.emit()
+                template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+                message = template.format(type(ex).__name__, ex.args)
+                print(message)
+
+            except Exception as ex:
+                self.str_signal.emit(
+                    'An Unknown Fatal Error Occurred. Contact Developer.')
+                self.down_done_signal.emit()
+
+                template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+                message = template.format(type(ex).__name__, ex.args)
+                logger.exception(type(ex).__name__)
+                print(message)
 
     def _find_course_link(self, response):
         soup = BeautifulSoup(response.text, 'lxml')
@@ -126,15 +152,9 @@ class Scrapper(QtCore.QThread):
                 print('Course Found.')
                 self.str_signal.emit('Course Found')
                 return self.url+course.h3.a['href']
-         
-        try:
-            raise CourseNotFoundException("Incorrect course name or You are not enrolled in the course.")
-        except:
-            traceback.print_exc()
-            self.str_signal.emit('Incorrect course name or You are not enrolled in the course.')
-            self.down_done_signal.emit()
-            self.terminate = True
 
+        raise CourseNotFoundException(
+            "Incorrect course name or You are not enrolled in the course.")
 
     def _find_course_content_url(self, response):
         completed_links = []
@@ -147,12 +167,11 @@ class Scrapper(QtCore.QThread):
             section_name = section.button.h3.text
 
             for links in sub_section.findAll('li'):
-                completed_links.append((section_name,links.a['href']))
-        
+                completed_links.append((section_name, links.a['href']))
+
         print('Content Links Found.')
 
         return completed_links
-
 
     def _find_youtube_link(self, html_text):
         youtube_urls = []
@@ -164,12 +183,12 @@ class Scrapper(QtCore.QThread):
 
         for divs in soup.findAll('div', class_='video closed'):
             try:
-                youtube_urls.append(base_youtube_url+self._find_youtube_id(divs['data-metadata']))
+                youtube_urls.append(
+                    base_youtube_url+self._find_youtube_id(divs['data-metadata']))
             except:
                 pass
-        
-        return youtube_urls
 
+        return youtube_urls
 
     def _find_youtube_id(self, s):
         parsed_json = jsonloads(s)
@@ -177,10 +196,24 @@ class Scrapper(QtCore.QThread):
         return id_
 
 
+def logger_setup():
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.ERROR)
+
+    formatter = logging.Formatter(
+        '\n%(asctime)s : %(levelname)s : Thread = %(threadName)s : %(message)s')
+
+    handler = logging.FileHandler('errors.log')
+    handler.setFormatter(formatter)
+
+    logger.addHandler(handler)
+
+    return logger
+
+
 if __name__ == '__main__':
     email = input("Enter buX Email: ")
     pass_ = input("Enter buX Password: ")
     id_ = input("Enter Course ID of the Course You want to Scrap: ")
-
     scrapper = Scrapper(email, pass_, id_)
     scrapper.run()
