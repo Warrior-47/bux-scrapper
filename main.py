@@ -1,9 +1,8 @@
-from bux_scrapper import Scrapper
-
-from PyQt5 import QtWidgets
-
 from progress import Ui_ProgressUI
+from bux_scrapper import Scrapper
 from sign_in import Ui_SignInUI
+
+from PyQt5 import QtCore, QtWidgets
 
 from os import environ, path, mkdir
 import sys
@@ -16,7 +15,7 @@ class ProgressWindow(QtWidgets.QMainWindow):
         self.ui.setupUi(self)
         self.ui.scrap_button.clicked.connect(self.go_back)
         self.show()
-
+        
         self.scrapper = Scrapper(email, pass_, course_id)
         self.scrapper.start()
 
@@ -24,25 +23,23 @@ class ProgressWindow(QtWidgets.QMainWindow):
         self.scrapper.int_progress_signal.connect(self.update_progress_bar)
         self.scrapper.int_progress_max_signal.connect(self.update_max_progress)
         self.scrapper.down_done_signal.connect(self.show_button)
-
-    
-    def start_work(self, email, pass_, course_id):
-        scrapper = Scrapper(self.event_manager)
-        scrapper.start_scrapping(email, pass_, course_id)
     
 
+    @QtCore.pyqtSlot(str)
     def change_info(self, message):
         self.ui.info_label.setText(message)
     
 
+    @QtCore.pyqtSlot(int)
     def update_progress_bar(self, val):
         self.ui.progressBar.setProperty('value', val)
     
 
+    @QtCore.pyqtSlot(int)
     def update_max_progress(self, val):
         self.ui.progressBar.setProperty('maximum', val)
 
-    
+    @QtCore.pyqtSlot()
     def show_button(self):
         self.ui.scrap_button.show()
 
@@ -79,8 +76,10 @@ def suppress_qt_warnings():
 
 if __name__ == '__main__':
     suppress_qt_warnings()
+
     if not path.exists('Output'):
         mkdir('Output')
+
     app = QtWidgets.QApplication(sys.argv)
     window = SignInWindow()
     sys.exit(app.exec_())
