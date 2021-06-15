@@ -1,3 +1,4 @@
+from PyQt5.QtCore import QThreadPool
 from bs4 import BeautifulSoup
 from PyQt5 import QtCore
 import requests
@@ -5,6 +6,7 @@ import logging
 import html
 
 from json import loads as jsonloads
+import time
 
 
 class CourseNotFoundException(Exception):
@@ -17,6 +19,51 @@ class InvalidEmailPasswordException(Exception):
         super().__init__(*args, **kwargs)
 
 
+class WorkerSignals(QtCore.QObject):
+    signal = QtCore.pyqtSignal(tuple)
+
+
+class DownloadingWorker(QtCore.QRunnable):
+
+    def __init__(self, index, session, url, section_name):
+        super().__init__()
+        self.index = index
+        self.session = session
+        self.url = url
+        self.section_name = section_name
+        self.emitter = WorkerSignals()
+    
+    def run(self):
+        content_response = self.session.get(self.url)
+
+        youtube_url_list = self._find_youtube_link(
+            content_response.text)
+
+        self.emitter.signal.emit((self.index, self.section_name, youtube_url_list))
+    
+    def _find_youtube_link(self, html_text):
+        youtube_urls = []
+        base_youtube_url = 'https://www.youtube.com/watch?v='
+
+        html_text = html.unescape(html_text)
+
+        soup = BeautifulSoup(html_text, 'lxml')
+
+        for divs in soup.findAll('div', class_='video closed'):
+            try:
+                youtube_urls.append(
+                    base_youtube_url+self._find_youtube_id(divs['data-metadata']))
+            except:
+                pass
+
+        return youtube_urls
+
+    def _find_youtube_id(self, s):
+        parsed_json = jsonloads(s)
+        id_ = parsed_json['streams'].split(':')[1]
+        return id_
+
+
 class Scrapper(QtCore.QThread):
     int_progress_signal = QtCore.pyqtSignal(int)
     int_progress_max_signal = QtCore.pyqtSignal(int)
@@ -25,6 +72,8 @@ class Scrapper(QtCore.QThread):
 
     def __init__(self, email, pass_, course_id):
         super().__init__()
+        self.pool = QThreadPool()
+        self.pool.setMaxThreadCount(4)
 
         self.url = 'https://bux.bracu.ac.bd'
         self.login_route = 'https://bux.bracu.ac.bd/user_api/v1/account/login_session/'
@@ -39,6 +88,7 @@ class Scrapper(QtCore.QThread):
         self.__course_id = course_id
 
     def run(self):
+        start_time = time.time()
         logger = logger_setup()
 
         self.str_signal.emit('Logging In')
@@ -78,33 +128,28 @@ class Scrapper(QtCore.QThread):
                 content_urls = self._find_course_content_url(course)
 
                 self.total_links = len(content_urls)
+                self.youtube_urls = [0] * self.total_links
 
                 self.int_progress_max_signal.emit(self.total_links)
                 self.str_signal.emit('Downloading')
                 print('Downloading.')
 
-                for section_name, url in content_urls:
-                    content_response = session.get(url)
-
-                    youtube_url_list = self._find_youtube_link(
-                        content_response.text)
-
-                    if youtube_url_list != []:
-                        self.youtube_urls.append(
-                            (section_name, youtube_url_list))
-
-                    self.downloaded += 1
-                    print(f'{self.downloaded}/{self.total_links} Done.')
-                    self.int_progress_signal.emit(self.downloaded)
+                for idx, (section_name, url) in enumerate(content_urls):
+                    worker = DownloadingWorker(idx, session, url, section_name)
+                    worker.emitter.signal.connect(self.update_data)
+                    self.pool.start(worker)
+                
+                self.pool.waitForDone()
 
                 with open(f'Output/{self.__course_id}-youtube-videos.csv', 'w') as f:
                     f.write('Section Name;Youtube Links\n')
 
-                    for section_name, url_list in self.youtube_urls:
-                        f.write(section_name)
+                    for section_name, urls in self.youtube_urls:
+                        if urls != []:
+                            f.write(section_name)
 
-                        for url in url_list:
-                            f.write(';'+url+'\n')
+                            for url in urls:
+                                f.write(';'+url+'\n')
 
                 self.str_signal.emit("Done!")
                 self.down_done_signal.emit()
@@ -142,6 +187,18 @@ class Scrapper(QtCore.QThread):
                 message = template.format(type(ex).__name__, ex.args)
                 logger.exception(type(ex).__name__)
                 print(message)
+            
+            finally:
+                end_time = time.time()
+                print('Finished In: ',end_time-start_time)
+
+    @QtCore.pyqtSlot(tuple)
+    def update_data(self, data):
+        self.youtube_urls[data[0]] = data[1:]
+
+        self.downloaded += 1
+        print(f'{self.downloaded}/{self.total_links} Done.')
+        self.int_progress_signal.emit(self.downloaded)
 
     def _find_course_link(self, response):
         soup = BeautifulSoup(response.text, 'lxml')
@@ -173,28 +230,6 @@ class Scrapper(QtCore.QThread):
 
         return completed_links
 
-    def _find_youtube_link(self, html_text):
-        youtube_urls = []
-        base_youtube_url = 'https://www.youtube.com/watch?v='
-
-        html_text = html.unescape(html_text)
-
-        soup = BeautifulSoup(html_text, 'lxml')
-
-        for divs in soup.findAll('div', class_='video closed'):
-            try:
-                youtube_urls.append(
-                    base_youtube_url+self._find_youtube_id(divs['data-metadata']))
-            except:
-                pass
-
-        return youtube_urls
-
-    def _find_youtube_id(self, s):
-        parsed_json = jsonloads(s)
-        id_ = parsed_json['streams'].split(':')[1]
-        return id_
-
 
 def logger_setup():
     logger = logging.getLogger(__name__)
@@ -209,11 +244,3 @@ def logger_setup():
     logger.addHandler(handler)
 
     return logger
-
-
-if __name__ == '__main__':
-    email = input("Enter buX Email: ")
-    pass_ = input("Enter buX Password: ")
-    id_ = input("Enter Course ID of the Course You want to Scrap: ")
-    scrapper = Scrapper(email, pass_, id_)
-    scrapper.run()
