@@ -1,9 +1,8 @@
+from progress import Ui_ProgressUI
 from bux_scrapper import Scrapper
+from sign_in import Ui_SignInUI
 
 from PyQt5 import QtWidgets
-
-from progress import Ui_ProgressUI
-from sign_in import Ui_SignInUI
 
 from os import environ, path, mkdir
 import sys
@@ -16,7 +15,7 @@ class ProgressWindow(QtWidgets.QMainWindow):
         self.ui.setupUi(self)
         self.ui.scrap_button.clicked.connect(self.go_back)
         self.show()
-
+        
         self.scrapper = Scrapper(email, pass_, course_id)
         self.scrapper.start()
 
