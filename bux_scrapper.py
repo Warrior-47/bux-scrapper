@@ -32,15 +32,16 @@ class DownloadingWorker(QtCore.QRunnable):
         self.url = url
         self.section_name = section_name
         self.emitter = WorkerSignals()
-    
+
     def run(self):
         content_response = self.session.get(self.url)
 
         youtube_url_list = self._find_youtube_link(
             content_response.text)
 
-        self.emitter.signal.emit((self.index, self.section_name, youtube_url_list))
-    
+        self.emitter.signal.emit(
+            (self.index, self.section_name, youtube_url_list))
+
     def _find_youtube_link(self, html_text):
         youtube_urls = []
         base_youtube_url = 'https://www.youtube.com/watch?v='
@@ -138,18 +139,18 @@ class Scrapper(QtCore.QThread):
                     worker = DownloadingWorker(idx, session, url, section_name)
                     worker.emitter.signal.connect(self.update_data)
                     self.pool.start(worker)
-                
+
                 self.pool.waitForDone()
 
                 with open(f'Output/{self.__course_id}-youtube-videos.csv', 'w') as f:
-                    f.write('Section Name;Youtube Links\n')
+                    f.write('Section Name,Youtube Links\n')
 
                     for section_name, urls in self.youtube_urls:
                         if urls != []:
                             f.write(section_name)
 
                             for url in urls:
-                                f.write(';'+url+'\n')
+                                f.write(','+url+'\n')
 
                 self.str_signal.emit("Done!")
                 self.down_done_signal.emit()
@@ -187,10 +188,10 @@ class Scrapper(QtCore.QThread):
                 message = template.format(type(ex).__name__, ex.args)
                 logger.exception(type(ex).__name__)
                 print(message)
-            
+
             finally:
                 end_time = time.time()
-                print('Finished In: ',end_time-start_time)
+                print('Finished In: ', end_time-start_time)
 
     @QtCore.pyqtSlot(tuple)
     def update_data(self, data):

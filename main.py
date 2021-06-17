@@ -15,7 +15,7 @@ class ProgressWindow(QtWidgets.QMainWindow):
         self.ui.setupUi(self)
         self.ui.scrap_button.clicked.connect(self.go_back)
         self.show()
-        
+
         self.scrapper = Scrapper(email, pass_, course_id)
         self.scrapper.start()
 
@@ -23,17 +23,14 @@ class ProgressWindow(QtWidgets.QMainWindow):
         self.scrapper.int_progress_signal.connect(self.update_progress_bar)
         self.scrapper.int_progress_max_signal.connect(self.update_max_progress)
         self.scrapper.down_done_signal.connect(self.show_button)
-    
 
     @QtCore.pyqtSlot(str)
     def change_info(self, message):
         self.ui.info_label.setText(message)
-    
 
     @QtCore.pyqtSlot(int)
     def update_progress_bar(self, val):
         self.ui.progressBar.setProperty('value', val)
-    
 
     @QtCore.pyqtSlot(int)
     def update_max_progress(self, val):
@@ -43,7 +40,6 @@ class ProgressWindow(QtWidgets.QMainWindow):
     def show_button(self):
         self.ui.scrap_button.show()
 
-    
     def go_back(self):
         self.sign_in = SignInWindow()
         self.close()
@@ -56,12 +52,11 @@ class SignInWindow(QtWidgets.QMainWindow):
         self.ui.setupUi(self)
         self.ui.scrap_button.clicked.connect(self.scrap)
         self.show()
-    
 
     def scrap(self):
         email = self.ui.email_input.text().strip()
         pass_ = self.ui.pass_input.text().strip()
-        course_id = self.ui.id_input.text().strip()
+        course_id = self.ui.id_input.text().strip().upper()
 
         self.progress = ProgressWindow(email, pass_, course_id)
         self.close()
