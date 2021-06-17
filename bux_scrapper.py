@@ -21,6 +21,7 @@ class InvalidEmailPasswordException(Exception):
 
 class WorkerSignals(QtCore.QObject):
     signal = QtCore.pyqtSignal(tuple)
+    abnormal_close_signal = QtCore.pyqtSignal()
 
 
 class DownloadingWorker(QtCore.QRunnable):
@@ -38,9 +39,11 @@ class DownloadingWorker(QtCore.QRunnable):
 
         youtube_url_list = self._find_youtube_link(
             content_response.text)
-
-        self.emitter.signal.emit(
-            (self.index, self.section_name, youtube_url_list))
+        try:
+            self.emitter.signal.emit(
+                (self.index, self.section_name, youtube_url_list))
+        except:
+            self.emitter.abnormal_close_signal.emit()
 
     def _find_youtube_link(self, html_text):
         youtube_urls = []
@@ -75,6 +78,7 @@ class Scrapper(QtCore.QThread):
         super().__init__()
         self.pool = QThreadPool()
         self.pool.setMaxThreadCount(4)
+        self.close_flag = True
 
         self.url = 'https://bux.bracu.ac.bd'
         self.login_route = 'https://bux.bracu.ac.bd/user_api/v1/account/login_session/'
@@ -136,9 +140,15 @@ class Scrapper(QtCore.QThread):
                 print('Downloading.')
 
                 for idx, (section_name, url) in enumerate(content_urls):
-                    worker = DownloadingWorker(idx, session, url, section_name)
-                    worker.emitter.signal.connect(self.update_data)
-                    self.pool.start(worker)
+                    if self.close_flag:
+                        worker = DownloadingWorker(
+                            idx, session, url, section_name)
+                        worker.emitter.signal.connect(self.update_data)
+                        worker.emitter.abnormal_close_signal.connect(
+                            self.close_app)
+                        self.pool.start(worker)
+                    else:
+                        break
 
                 self.pool.waitForDone()
 
@@ -192,6 +202,10 @@ class Scrapper(QtCore.QThread):
             finally:
                 end_time = time.time()
                 print('Finished In: ', end_time-start_time)
+
+    @QtCore.pyqtSlot()
+    def close_app(self):
+        self.close_flag = False
 
     @QtCore.pyqtSlot(tuple)
     def update_data(self, data):

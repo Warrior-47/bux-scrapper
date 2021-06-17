@@ -24,6 +24,12 @@ class ProgressWindow(QtWidgets.QMainWindow):
         self.scrapper.int_progress_max_signal.connect(self.update_max_progress)
         self.scrapper.down_done_signal.connect(self.show_button)
 
+        self.cleanup_flag = False
+
+    def closeEvent(self, event):
+        while not self.cleanup_flag and self.scrapper.pool.activeThreadCount() != 0:
+            pass
+
     @QtCore.pyqtSlot(str)
     def change_info(self, message):
         self.ui.info_label.setText(message)
