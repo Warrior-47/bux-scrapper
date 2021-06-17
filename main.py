@@ -9,20 +9,32 @@ import sys
 
 
 class ProgressWindow(QtWidgets.QMainWindow):
+    closing_signal = QtCore.pyqtSignal()
+
     def __init__(self, email, pass_, course_id):
         QtWidgets.QMainWindow.__init__(self)
         self.ui = Ui_ProgressUI()
         self.ui.setupUi(self)
+        self.__email = email
         self.ui.scrap_button.clicked.connect(self.go_back)
         self.show()
 
         self.scrapper = Scrapper(email, pass_, course_id)
-        self.scrapper.start()
 
         self.scrapper.str_signal.connect(self.change_info)
         self.scrapper.int_progress_signal.connect(self.update_progress_bar)
         self.scrapper.int_progress_max_signal.connect(self.update_max_progress)
         self.scrapper.down_done_signal.connect(self.show_button)
+
+        self.closing_signal.connect(self.scrapper.parent_closing)
+
+        self.scrapper.start()
+
+    def closeEvent(self, event):
+        self.hide()
+        if self.scrapper.pool.activeThreadCount() != 0:
+            self.closing_signal.emit()
+            self.scrapper.pool.waitForDone()
 
     @QtCore.pyqtSlot(str)
     def change_info(self, message):
@@ -41,15 +53,16 @@ class ProgressWindow(QtWidgets.QMainWindow):
         self.ui.scrap_button.show()
 
     def go_back(self):
-        self.sign_in = SignInWindow()
+        self.sign_in = SignInWindow(self.__email)
         self.close()
 
 
 class SignInWindow(QtWidgets.QMainWindow):
-    def __init__(self):
+    def __init__(self, email=None):
         QtWidgets.QMainWindow.__init__(self)
         self.ui = Ui_SignInUI()
         self.ui.setupUi(self)
+        self.ui.email_input.setText(email if email else '')
         self.ui.scrap_button.clicked.connect(self.scrap)
         self.show()
 

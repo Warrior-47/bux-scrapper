@@ -2,10 +2,10 @@ from PyQt5.QtCore import QThreadPool
 from bs4 import BeautifulSoup
 from PyQt5 import QtCore
 import requests
-import logging
 import html
 
 from json import loads as jsonloads
+import logging
 import time
 
 
@@ -38,9 +38,11 @@ class DownloadingWorker(QtCore.QRunnable):
 
         youtube_url_list = self._find_youtube_link(
             content_response.text)
-
-        self.emitter.signal.emit(
-            (self.index, self.section_name, youtube_url_list))
+        try:
+            self.emitter.signal.emit(
+                (self.index, self.section_name, youtube_url_list))
+        except:
+            self.emitter.abnormal_close_signal.emit()
 
     def _find_youtube_link(self, html_text):
         youtube_urls = []
@@ -75,6 +77,7 @@ class Scrapper(QtCore.QThread):
         super().__init__()
         self.pool = QThreadPool()
         self.pool.setMaxThreadCount(4)
+        self.shutdown = False
 
         self.url = 'https://bux.bracu.ac.bd'
         self.login_route = 'https://bux.bracu.ac.bd/user_api/v1/account/login_session/'
@@ -107,8 +110,10 @@ class Scrapper(QtCore.QThread):
                     'X-CSRFToken': csrf_token
                 }
 
-                login_payload = {'email': self.__email,
-                                 'password': self.__pass_}
+                login_payload = {
+                    'email': self.__email,
+                    'password': self.__pass_
+                }
 
                 login_req = session.post(
                     self.login_route, headers=HEADERS, data=login_payload)
@@ -136,11 +141,16 @@ class Scrapper(QtCore.QThread):
                 print('Downloading.')
 
                 for idx, (section_name, url) in enumerate(content_urls):
-                    worker = DownloadingWorker(idx, session, url, section_name)
+                    worker = DownloadingWorker(
+                        idx, session, url, section_name)
                     worker.emitter.signal.connect(self.update_data)
                     self.pool.start(worker)
 
-                self.pool.waitForDone()
+                while self.pool.activeThreadCount() != 0:
+                    if self.shutdown:
+                        self.pool.clear()
+                        self.pool.waitForDone()
+                        return
 
                 with open(f'Output/{self.__course_id}-youtube-videos.csv', 'w') as f:
                     f.write('Section Name,Youtube Links\n')
@@ -193,11 +203,14 @@ class Scrapper(QtCore.QThread):
                 end_time = time.time()
                 print('Finished In: ', end_time-start_time)
 
+    @QtCore.pyqtSlot()
+    def parent_closing(self):
+        self.shutdown = True
+
     @QtCore.pyqtSlot(tuple)
     def update_data(self, data):
-        self.youtube_urls[data[0]] = data[1:]
-
         self.downloaded += 1
+        self.youtube_urls[data[0]] = data[1:]
         print(f'{self.downloaded}/{self.total_links} Done.')
         self.int_progress_signal.emit(self.downloaded)
 
