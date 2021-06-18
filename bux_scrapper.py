@@ -20,7 +20,8 @@ class InvalidEmailPasswordException(Exception):
 
 
 class WorkerSignals(QtCore.QObject):
-    signal = QtCore.pyqtSignal(tuple)
+    data_signal = QtCore.pyqtSignal(tuple)
+    exception_signal = QtCore.pyqtSignal(Exception)
 
 
 class DownloadingWorker(QtCore.QRunnable):
@@ -34,15 +35,17 @@ class DownloadingWorker(QtCore.QRunnable):
         self.emitter = WorkerSignals()
 
     def run(self):
-        content_response = self.session.get(self.url)
-
-        youtube_url_list = self._find_youtube_link(
-            content_response.text)
         try:
-            self.emitter.signal.emit(
+            content_response = self.session.get(self.url)
+
+            youtube_url_list = self._find_youtube_link(
+                content_response.text)
+
+            self.emitter.data_signal.emit(
                 (self.index, self.section_name, youtube_url_list))
-        except:
-            self.emitter.abnormal_close_signal.emit()
+
+        except Exception as e:
+            self.emitter.exception_signal.emit(e)
 
     def _find_youtube_link(self, html_text):
         youtube_urls = []
@@ -93,7 +96,6 @@ class Scrapper(QtCore.QThread):
 
     def run(self):
         start_time = time.time()
-        logger = logger_setup()
 
         self.str_signal.emit('Logging In')
         print('Loggin In.')
@@ -143,7 +145,9 @@ class Scrapper(QtCore.QThread):
                 for idx, (section_name, url) in enumerate(content_urls):
                     worker = DownloadingWorker(
                         idx, session, url, section_name)
-                    worker.emitter.signal.connect(self.update_data)
+                    worker.emitter.data_signal.connect(self.update_data)
+                    worker.emitter.exception_signal.connect(
+                        self.handle_exception)
                     self.pool.start(worker)
 
                 while self.pool.activeThreadCount() != 0:
@@ -166,38 +170,8 @@ class Scrapper(QtCore.QThread):
                 self.down_done_signal.emit()
                 print('Done!')
 
-            except requests.ConnectionError as ex:
-                self.str_signal.emit(
-                    'Check Your Internet Connection and Try Again')
-                self.down_done_signal.emit()
-                template = "An exception of type {0} occurred. Arguments:\n{1!r}"
-                message = template.format(type(ex).__name__, ex.args)
-                print(message)
-
-            except InvalidEmailPasswordException as ex:
-                self.str_signal.emit('Email or Password is Incorrect')
-                self.down_done_signal.emit()
-                template = "An exception of type {0} occurred. Arguments:\n{1!r}"
-                message = template.format(type(ex).__name__, ex.args)
-                print(message)
-
-            except CourseNotFoundException as ex:
-                self.str_signal.emit(
-                    'Incorrect course name or You are not enrolled in the course.')
-                self.down_done_signal.emit()
-                template = "An exception of type {0} occurred. Arguments:\n{1!r}"
-                message = template.format(type(ex).__name__, ex.args)
-                print(message)
-
-            except Exception as ex:
-                self.str_signal.emit(
-                    'An Unknown Fatal Error Occurred. Contact Developer.')
-                self.down_done_signal.emit()
-
-                template = "An exception of type {0} occurred. Arguments:\n{1!r}"
-                message = template.format(type(ex).__name__, ex.args)
-                logger.exception(type(ex).__name__)
-                print(message)
+            except Exception as e:
+                self.handle_exception(e)
 
             finally:
                 end_time = time.time()
@@ -206,6 +180,34 @@ class Scrapper(QtCore.QThread):
     @QtCore.pyqtSlot()
     def parent_closing(self):
         self.shutdown = True
+
+    @QtCore.pyqtSlot(Exception)
+    def handle_exception(self, e):
+        if not self.shutdown:
+            self.shutdown = True
+
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(e).__name__, e.args)
+            print(message)
+
+            if isinstance(e, InvalidEmailPasswordException):
+                self.str_signal.emit('Email or Password is Incorrect')
+
+            elif isinstance(e, requests.ConnectionError):
+                self.str_signal.emit(
+                    'Check Your Internet Connection and Try Again')
+
+            elif isinstance(e, CourseNotFoundException):
+                self.str_signal.emit(
+                    'Incorrect course name or You are not enrolled in the course.')
+
+            else:
+                logger = logger_setup()
+                self.str_signal.emit(
+                    'An Unknown Fatal Error Occurred. Contact Developer.')
+                logger.exception(type(e).__name__)
+
+            self.down_done_signal.emit()
 
     @QtCore.pyqtSlot(tuple)
     def update_data(self, data):
