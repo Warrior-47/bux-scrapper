@@ -140,7 +140,7 @@ class Scrapper(QtCore.QThread):
         # To manage a pool of workers to request and find multiple
         # youtube ids concurrently
         self.pool = QThreadPool()
-        self.pool.setMaxThreadCount(4)
+        self.pool.setMaxThreadCount(8)
         self.shutdown = False # Flag to notify if the GUI is closed by user
 
         # Information required for login
