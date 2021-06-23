@@ -1,70 +1,76 @@
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
+from PyQt5 import QtCore
+
 import pickle
 import os
 
 
-def authenticator():
-    credentials = None
-    CREDENTIALS_PATH = 'youtube-credentials.pickled'
+class Playlister(QtCore.QThread):
+    def __init__(self):
+        super().__init__()
 
-    if os.path.exists(CREDENTIALS_PATH):
-        with open(CREDENTIALS_PATH, 'rb') as f:
-            credentials = pickle.load(f)
+    def authenticator(self):
+        credentials = None
+        CREDENTIALS_PATH = 'youtube-credentials.pickled'
 
-    if not credentials or not credentials.valid:
-        if credentials and credentials.expired and credentials.refresh_token:
-            credentials.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                'client_secret.json', scopes=["https://www.googleapis.com/auth/youtube.force-ssl"])
+        if os.path.exists(CREDENTIALS_PATH):
+            with open(CREDENTIALS_PATH, 'rb') as f:
+                credentials = pickle.load(f)
 
-            flow.run_local_server(port=8181, prompt='consent')
+        if not credentials or not credentials.valid:
+            if credentials and credentials.expired and credentials.refresh_token:
+                credentials.refresh(Request())
+            else:
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    'client_secret.json', scopes=["https://www.googleapis.com/auth/youtube.force-ssl"])
 
-            credentials = flow.credentials
+                flow.run_local_server(port=8181, prompt='consent')
 
-            with open(CREDENTIALS_PATH, 'wb') as f:
-                pickle.dump(credentials, f)
+                credentials = flow.credentials
 
-    return build('youtube', 'v3', credentials=credentials)
+                with open(CREDENTIALS_PATH, 'wb') as f:
+                    pickle.dump(credentials, f)
 
-
-def create_playlist(service, title):
-    part = "snippet,status"
-    body = {
-        "snippet": {
-            "title": title,
-            "description": "No Description",
-            "tags": [
-                str(title)+" playlist",
-                "API call"
-            ],
-            "defaultLanguage": "en"
-        },
-        "status": {
-            "privacyStatus": "unlisted"
-        }
-    }
-
-    req = service.playlists().insert(part=part, body=body)
-
-    return req.execute()
+        return build('youtube', 'v3', credentials=credentials)
 
 
-def add_playlistItem(service, playlistId, position, videoId):
-    part = "snippet"
-    body = {
-        "snippet": {
-            "playlistId": playlistId,
-            "position": position,
-            "resourceId": {
-                "kind": "youtube#video",
-                "videoId": videoId
+    def create_playlist(self, service, title):
+        part = "snippet,status"
+        body = {
+            "snippet": {
+                "title": title,
+                "description": "No Description",
+                "tags": [
+                    str(title)+" playlist",
+                    "API call"
+                ],
+                "defaultLanguage": "en"
+            },
+            "status": {
+                "privacyStatus": "unlisted"
             }
         }
-    }
 
-    req = service.playlistItems().insert(part=part, body=body)
+        req = service.playlists().insert(part=part, body=body)
 
-    return req.execute()
+        return req.execute()
+
+
+    def add_playlistItem(self, service, playlistId, position, videoId):
+        part = "snippet"
+        body = {
+            "snippet": {
+                "playlistId": playlistId,
+                "position": position,
+                "resourceId": {
+                    "kind": "youtube#video",
+                    "videoId": videoId
+                }
+            }
+        }
+
+        req = service.playlistItems().insert(part=part, body=body)
+
+        return req.execute()
