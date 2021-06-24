@@ -4,8 +4,9 @@ from PyQt5 import QtCore
 import requests
 import html
 
+from helpers import logger_setup
+
 from json import loads as jsonloads
-import logging
 import time
 
 
@@ -123,7 +124,7 @@ class Scrapper(QtCore.QThread):
     int_progress_signal = QtCore.pyqtSignal(int)
     int_progress_max_signal = QtCore.pyqtSignal(int)
     str_signal = QtCore.pyqtSignal(str)
-    down_done_signal = QtCore.pyqtSignal()
+    down_done_signal = QtCore.pyqtSignal(int)
 
     def __init__(self, email, pass_, course_id):
         """The main scrapper class. Given the email, password and
@@ -247,7 +248,7 @@ class Scrapper(QtCore.QThread):
 
                 # Updating GUI
                 self.str_signal.emit("Done!")
-                self.down_done_signal.emit()
+                self.down_done_signal.emit(1)
                 print('Done!')
 
             except Exception as e:
@@ -291,12 +292,12 @@ class Scrapper(QtCore.QThread):
 
             else:
                 # If the exception thrown is unknown, logging it in a file for debugging.
-                logger = logger_setup()
+                logger = logger_setup('Scrapping Logger')
                 self.str_signal.emit(
                     'An Unknown Fatal Error Occurred. Contact Developer.')
                 logger.exception(type(e).__name__)
 
-            self.down_done_signal.emit()
+            self.down_done_signal.emit(0)
 
     @QtCore.pyqtSlot(tuple)
     def update_data(self, data):
@@ -368,23 +369,3 @@ class Scrapper(QtCore.QThread):
         print('Content Links Found.')
 
         return completed_links
-
-
-def logger_setup():
-    """Sets up a logger to log fatal errors
-
-    Returns:
-        logging.Logger: The Logger object
-    """
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.ERROR)
-
-    formatter = logging.Formatter(
-        '\n%(asctime)s : %(levelname)s : Thread = %(threadName)s : %(message)s')
-
-    handler = logging.FileHandler('errors.log')
-    handler.setFormatter(formatter)
-
-    logger.addHandler(handler)
-
-    return logger
