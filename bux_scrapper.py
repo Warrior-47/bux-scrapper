@@ -240,6 +240,7 @@ class Scrapper(QtCore.QThread):
                     f.write('Section Name,Youtube Links\n')
 
                     for section_name, urls in self.youtube_urls:
+                        section_name = section_name.replace(',', '')
                         if urls != []:
                             f.write(section_name)
 

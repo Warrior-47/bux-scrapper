@@ -2,16 +2,20 @@ from google.auth.exceptions import RefreshError, TransportError
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.errors import HttpError
-from googleapiclient.discovery import build
+from googleapiclient.discovery import build_from_document
 from PyQt5 import QtCore
 
 from helpers import logger_setup
 
+from concurrent.futures import TimeoutError
+from pebble import concurrent
 import pickle
+import json
 import time
 import csv
 import os
 
+CREDENTIALS_PATH = 'youtube-credentials.pickled'
 
 class Playlister(QtCore.QThread):
     int_progress_signal = QtCore.pyqtSignal(int)
@@ -38,7 +42,7 @@ class Playlister(QtCore.QThread):
             self.int_progress_max_signal.emit(self.total_progress)
 
             # Authenticating User
-            self.str_signal.emit('Authenticating')
+            self.str_signal.emit('Authenticate Using GSuite\nAuthenticating...')
             service = self.authenticate()
 
             # Updating GUI
@@ -47,7 +51,26 @@ class Playlister(QtCore.QThread):
 
             # Creating the Required Playlist
             self.str_signal.emit('Creating Playlist')
-            playlist_response = self.create_playlist(service)
+            try:
+                playlist_response = self.create_playlist(service)
+            except HttpError as e:
+                if e.status_code == 429:
+                    # Rate Limit Exceeded
+                    time.sleep(1)
+                    counter = 0
+                    while True:
+                        try:
+                            counter += 1
+                            playlist_response = self.create_playlist(service)
+                            break
+                        except HttpError as e:
+                            if e.status_code == 429:
+                                time.sleep(2 ** counter)
+                            else:
+                                raise e
+                else:
+                    raise e
+
             playlist_id = playlist_response['id']
 
             print('Playlist Created.')
@@ -77,9 +100,24 @@ class Playlister(QtCore.QThread):
                             self.str_signal.emit('Adding Videos to Playlist')
                             print('Adding Videos to Playlist')
 
+                        elif e.status_code == 429:
+                            # Rate Limit Exceeded
+                            time.sleep(1)
+                            counter = 0
+                            while True:
+                                try:
+                                    counter += 1
+                                    self.add_playlistItem(service, playlist_id, i, id)
+                                    break
+                                except HttpError as e:
+                                    if e.status_code == 429:
+                                        time.sleep(2 ** counter)
+                                    else:
+                                        raise e
+
                         else:
                             # As the exception thrown is unknown, passing to default handler
-                            raise Exception()
+                            raise e
 
                     # Updating GUI
                     self.progress += 1
@@ -117,7 +155,6 @@ class Playlister(QtCore.QThread):
             googleapiclient.discovery.Resource: Resource required to access user account
         """
         credentials = None
-        CREDENTIALS_PATH = 'youtube-credentials.pickled'
 
         if os.path.exists(CREDENTIALS_PATH):
             # Reloading credentials if it was prevoiusly stored
@@ -134,28 +171,14 @@ class Playlister(QtCore.QThread):
 
             except RefreshError:
                 # In case of invalid grant or no credentials,
-                # create new credentials
-                with open('secrets.pickled', 'rb') as f1:
-                    # Done to store api secret somewhat private
-                    data = pickle.load(f1)
-                    with open('secrets.json', 'w') as f2:
-                        f2.write(data)
-
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    'secrets.json', scopes=["https://www.googleapis.com/auth/youtube"])
-                
-                os.remove('secrets.json')
-
+                # create new credentials.
                 # Asking user for permission
-                flow.run_local_server(port=8181, prompt='consent')
+                process = user_consent()
+                credentials = process.result()
 
-                credentials = flow.credentials
-
-                # Storing credentials for future use
-                with open(CREDENTIALS_PATH, 'wb') as f:
-                    pickle.dump(credentials, f)
-
-        return build('youtube', 'v3', credentials=credentials)
+        with open('rest.json', 'rb') as f:
+            service = json.loads(f.read())
+        return build_from_document(service, credentials=credentials)
 
 
     def create_playlist(self, service):
@@ -236,10 +259,14 @@ class Playlister(QtCore.QThread):
         Returns:
             list: A list containing all youtube IDs
         """
-        with open(f'Output/{title}-youtube-videos.csv') as f:
-            reader = csv.reader(f)
-            next(reader, None)
-            ids = [ i[1].split('=')[1] for i in reader ]
+        try:
+            with open(f'Output/{title}-youtube-videos.csv') as f:
+                reader = csv.reader(f)
+                next(reader, None)
+                ids = [ i[1].split('=')[1] for i in reader ]
+
+        except Exception as e:
+            self.handle_exceptions(e)
         
         return ids
     
@@ -270,6 +297,9 @@ class Playlister(QtCore.QThread):
                     self.str_signal.emit(
                         'An Unknown Fatal Error Occurred. Contact Developer.')
                     logger.exception(type(e).__name__)
+            elif isinstance(e, TimeoutError):
+                # If the user takes too long or fails to authenticate.
+                self.str_signal.emit('Authentication Timed out. Try Again.')
             else:
                 # As the exception thrown is unknown, logging it in a file for debugging.
                 self.str_signal.emit(
@@ -277,3 +307,31 @@ class Playlister(QtCore.QThread):
                 logger.exception(type(e).__name__)
 
             self.down_done_signal.emit(0)
+
+@concurrent.process(timeout=60)
+def user_consent():
+    """Asks user for permission to access account.
+    Times out after 60 seconds.
+    """
+    with open('info.pickled', 'rb') as f1:
+        # Done to store api secret somewhat private
+        data = pickle.load(f1)
+        with open('secrets.json', 'w') as f2:
+            f2.write(data)
+
+    flow = InstalledAppFlow.from_client_secrets_file(
+        'secrets.json', scopes=["https://www.googleapis.com/auth/youtube"])
+    
+    os.remove('secrets.json')
+
+    # Asking user for permission
+    flow.run_local_server(port=8181, prompt='consent',
+                        success_message="Authentication Complete. You may close the tab.",
+                        open_browser=True, timeout=10)
+    credentials = flow.credentials
+
+    # Storing credentials for future use
+    with open(CREDENTIALS_PATH, 'wb') as f:
+        pickle.dump(credentials, f)
+    
+    return credentials

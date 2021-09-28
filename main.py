@@ -7,6 +7,7 @@ from sign_in import Ui_SignInUI
 from PyQt5 import QtCore, QtWidgets
 
 from os import environ, path, mkdir
+from multiprocessing import freeze_support
 import sys
 
 
@@ -171,6 +172,7 @@ def suppress_qt_warnings():
 
 
 if __name__ == '__main__':
+    freeze_support()
     suppress_qt_warnings()
 
     if not path.exists('Output'):
