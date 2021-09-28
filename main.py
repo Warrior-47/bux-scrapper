@@ -1,10 +1,13 @@
-from progress import Ui_ProgressUI
+from youtube_playlister import Playlister
 from bux_scrapper import Scrapper
+
+from progress import Ui_ProgressUI
 from sign_in import Ui_SignInUI
 
 from PyQt5 import QtCore, QtWidgets
 
 from os import environ, path, mkdir
+from multiprocessing import freeze_support
 import sys
 
 
@@ -22,11 +25,15 @@ class ProgressWindow(QtWidgets.QMainWindow):
         QtWidgets.QMainWindow.__init__(self)
         self.ui = Ui_ProgressUI()
         self.ui.setupUi(self)
-        self.__email = email
         self.ui.scrap_button.clicked.connect(self.go_back)
+        self.ui.playlist_button.clicked.connect(self.make_playlist)
         self.show()
 
-        # Creating the scrapper
+        self.__email = email
+        self.course_id = course_id
+
+        # Creating the Scrapper and initializing Playlister
+        self.playlister = None
         self.scrapper = Scrapper(email, pass_, course_id)
 
         self.scrapper.str_signal.connect(self.change_info)
@@ -44,13 +51,20 @@ class ProgressWindow(QtWidgets.QMainWindow):
         stopping main thread
         """
         self.hide()
-
-        # Checks if any worker threads are working
-        if self.scrapper.pool.activeThreadCount() != 0:
-            # If true, then notifies scrapper to stop all workers
-            # and waits till all workers stop
+        
+        # Checking which app is running
+        if self.playlister is None:
+            # Checks if any worker threads are working
+            if self.scrapper.pool.activeThreadCount() != 0:
+                # If true, then notifies scrapper to stop all workers
+                # and waits till all workers stop
+                self.closing_signal.emit()
+                self.scrapper.pool.waitForDone()
+        else:
+            # Stopping the Playlister before closing app
             self.closing_signal.emit()
-            self.scrapper.pool.waitForDone()
+            while self.playlister.isRunning(): pass
+
 
     @QtCore.pyqtSlot(str)
     def change_info(self, message):
@@ -81,17 +95,44 @@ class ProgressWindow(QtWidgets.QMainWindow):
         """
         self.ui.progressBar.setProperty('maximum', val)
 
-    @QtCore.pyqtSlot()
-    def show_button(self):
-        """Shows the scrap again button
+    @QtCore.pyqtSlot(int)
+    def show_button(self, flag):
+        """Shows the appropiate buttons based on the flag
+
+        Args:
+            flag (int): Determines if make_playlist button should be shown
         """
         self.ui.scrap_button.show()
+
+        if flag:
+            self.ui.playlist_button.show()
 
     def go_back(self):
         """Closes the current window and opens the Sign-In window
         """
+        self.playlister = None
         self.sign_in = SignInWindow(self.__email)
         self.close()
+    
+    def make_playlist(self):
+        """Sets up the GUI to start the Playlister then
+        starts Playlister in another thread
+        """
+        self.change_info('Initializing')
+        self.ui.scrap_button.hide()
+        self.ui.playlist_button.hide()
+        self.update_progress_bar(0)
+
+        self.playlister = Playlister(self.course_id)
+
+        self.playlister.str_signal.connect(self.change_info)
+        self.playlister.int_progress_signal.connect(self.update_progress_bar)
+        self.playlister.int_progress_max_signal.connect(self.update_max_progress)
+        self.playlister.down_done_signal.connect(self.show_button)
+
+        self.closing_signal.connect(self.playlister.parent_closing)
+
+        self.playlister.start()
 
 
 class SignInWindow(QtWidgets.QMainWindow):
@@ -131,6 +172,7 @@ def suppress_qt_warnings():
 
 
 if __name__ == '__main__':
+    freeze_support()
     suppress_qt_warnings()
 
     if not path.exists('Output'):
