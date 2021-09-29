@@ -274,6 +274,15 @@ class Playlister(QtCore.QThread):
             elif isinstance(e, HttpError):
                 if e.status_code == 403:
                     self.str_signal.emit('Exceeded Youtube Limit. Try Again Tomorrow.')
+                elif e.status_code == 401:
+                    if e._get_reason() == 'Unauthorized':
+                        # GSuite account does not have a youtube channel.
+                        self.str_signal.emit('Your GSuite Youtube account does not have a channel. Go to Youtube with your GSuite, Click on your icon at the top right corner and Create Channel.')
+                    else:
+                        # As the exception thrown is unknown, logging it in a file for debugging.
+                        self.str_signal.emit(
+                            'An Unknown Fatal Error Occurred. Contact Developer.')
+                        logger.exception(type(e).__name__)
                 else:
                     # As the exception thrown is unknown, logging it in a file for debugging.
                     self.str_signal.emit(
