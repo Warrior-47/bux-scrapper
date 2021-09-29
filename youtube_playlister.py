@@ -1,8 +1,7 @@
 from google.auth.exceptions import RefreshError, TransportError
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
-from googleapiclient.errors import HttpError
 from googleapiclient.discovery import build_from_document
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.errors import HttpError
 from PyQt5 import QtCore
 
 from helpers import logger_setup
@@ -14,8 +13,6 @@ import json
 import time
 import csv
 import os
-
-CREDENTIALS_PATH = 'youtube-credentials.pickled'
 
 class Playlister(QtCore.QThread):
     int_progress_signal = QtCore.pyqtSignal(int)
@@ -156,25 +153,10 @@ class Playlister(QtCore.QThread):
         """
         credentials = None
 
-        if os.path.exists(CREDENTIALS_PATH):
-            # Reloading credentials if it was prevoiusly stored
-            with open(CREDENTIALS_PATH, 'rb') as f:
-                credentials = pickle.load(f)
-
-        if not credentials or not credentials.valid:
-            # If credentials are not valid, then refreshes them
-            try:
-                if credentials:
-                    credentials.refresh(Request())
-                else:
-                    raise RefreshError()
-
-            except RefreshError:
-                # In case of invalid grant or no credentials,
-                # create new credentials.
-                # Asking user for permission
-                process = user_consent()
-                credentials = process.result()
+        # create new credentials.
+        # Asking user for permission
+        process = user_consent()
+        credentials = process.result()
 
         with open('rest.json', 'rb') as f:
             service = json.loads(f.read())
@@ -327,11 +309,7 @@ def user_consent():
     # Asking user for permission
     flow.run_local_server(port=8181, prompt='consent',
                         success_message="Authentication Complete. You may close the tab.",
-                        open_browser=True, timeout=10)
+                        open_browser=True)
     credentials = flow.credentials
-
-    # Storing credentials for future use
-    with open(CREDENTIALS_PATH, 'wb') as f:
-        pickle.dump(credentials, f)
     
     return credentials
