@@ -25,3 +25,7 @@ After doing it's work, two button will appear. **Make Playlist** and **Scrap Aga
 > Keep in mind, Google enforces a quota limit and if that limit is exceeded, you'll need to wait a day to add more playlists.
 
 **Scrap Again** will take you back to the login GUI.
+
+## Where to Download
+
+Go to https://warrior-47.github.io/bux-scrapper/buX%20Scrapper.zip
