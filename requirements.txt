@@ -13,7 +13,7 @@ google-auth-oauthlib==0.4.4
 googleapis-common-protos==1.53.0
 httplib2==0.19.1
 idna==2.10
-lxml==4.6.3
+lxml==4.6.5
 oauthlib==3.1.1
 packaging==20.9
 Pebble==4.6.3
